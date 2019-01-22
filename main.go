@@ -70,8 +70,7 @@ func (central *ControlLogic) centralControlLogic() {
 	central.elevators = 3
 	central.runtime = 0.2
 	central.simulations = 1
-	central.function = 0
-
+	central.function = 1
 	counter = central.capacityPeople
 }
 
@@ -229,23 +228,34 @@ func LongestWaitingorWanting(elevator *Elevator, central *ControlLogic) {
 
 // NearestWaiter : Hallo
 func NearestWaiter(elevator *Elevator, central *ControlLogic) {
-	longestWaitingorWantingPerson := Person{}
+	longestWaitingorNearestWantingPerson := Person{}
 	if len(elevator.people) == 0 {
 		for _, level := range central.building.levels {
 			for _, person := range level.waitingPeople {
-				if person.timeWaited > longestWaitingorWantingPerson.timeWaited {
-					longestWaitingorWantingPerson = person
+				if person.timeWaited > longestWaitingorNearestWantingPerson.timeWaited {
+					longestWaitingorNearestWantingPerson = person
 				}
 			}
 		}
-		central.building.elevators[elevator.identifier].goingToLevel = longestWaitingorWantingPerson.waitingOnLevel
+		central.building.elevators[elevator.identifier].goingToLevel = longestWaitingorNearestWantingPerson.waitingOnLevel
 	} else {
-		for _, person := range elevator.people {
-			if person.timeSpend >= longestWaitingorWantingPerson.timeSpend {
-				longestWaitingorWantingPerson = person
+		tmpCurrent := elevator.currentLevel
+		for i, person := range elevator.people {
+			if i == 0 {
+				longestWaitingorNearestWantingPerson = person
+			} else {
+				if person.wantingToLevel > tmpCurrent {
+					if longestWaitingorNearestWantingPerson.wantingToLevel > person.wantingToLevel {
+						longestWaitingorNearestWantingPerson = person
+					}
+				} else {
+					if person.wantingToLevel > longestWaitingorNearestWantingPerson.wantingToLevel {
+						longestWaitingorNearestWantingPerson = person
+					}
+				}
 			}
 		}
-		central.building.elevators[elevator.identifier].goingToLevel = longestWaitingorWantingPerson.wantingToLevel
+		central.building.elevators[elevator.identifier].goingToLevel = longestWaitingorNearestWantingPerson.wantingToLevel
 	}
 
 	if elevator.currentLevel != central.building.elevators[elevator.identifier].goingToLevel {
