@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// ControlLogic :
 type ControlLogic struct {
 	capacityPeople   int
 	capacityElevator int
@@ -19,6 +20,7 @@ type ControlLogic struct {
 	building         Building
 }
 
+// Building :
 type Building struct {
 	name      string
 	people    []Person
@@ -27,11 +29,13 @@ type Building struct {
 	muTex     sync.Mutex
 }
 
+// Level :
 type Level struct {
 	identifier    int
 	waitingPeople []Person
 }
 
+// Elevator :
 type Elevator struct {
 	identifier   int
 	capacity     int
@@ -41,6 +45,7 @@ type Elevator struct {
 	people       []Person
 }
 
+// Person :
 type Person struct {
 	waitingOnLevel int
 	wantingToLevel int
@@ -54,13 +59,15 @@ func main() {
 	central := ControlLogic{}
 	central.centralControlLogic()
 	central.controlLogic()
+	time.Sleep(time.Millisecond)
+	central.toString()
 }
 
 func (central *ControlLogic) centralControlLogic() {
-	central.capacityPeople = 30
+	central.capacityPeople = 1000
 	central.capacityElevator = 5
-	central.levels = 4
-	central.elevators = 2
+	central.levels = 6
+	central.elevators = 3
 	central.runtime = 0.2
 	central.simulations = 1
 	central.function = 0
@@ -73,7 +80,7 @@ func (central *ControlLogic) controlLogic() {
 	elevatorChannels := make([]chan Elevator, central.elevators)
 
 	central.functions = append(central.functions, LongestWaitingorWanting)
-	central.functions = append(central.functions, LongestWanting)
+	central.functions = append(central.functions, NearestWaiter)
 	central.building = Building{
 		name:      "FH-AACHEN",
 		people:    []Person{},
@@ -102,7 +109,6 @@ func (central *ControlLogic) controlLogic() {
 	for counter != 0 {
 		select {
 		case person := <-personChannel:
-			central.building.people = append(central.building.people, person)
 			central.building.levels[person.waitingOnLevel].waitingPeople = append(central.building.levels[person.waitingOnLevel].waitingPeople, person)
 			fmt.Println("new person waiting on Floor", person.waitingOnLevel, "who wants to", person.wantingToLevel)
 		default:
@@ -114,7 +120,6 @@ func (central *ControlLogic) controlLogic() {
 					continue
 				}
 			}
-
 		}
 	}
 
@@ -146,40 +151,42 @@ func (central *ControlLogic) elevator(elevatorChannels []chan Elevator) {
 		ii := i
 		go func(central *ControlLogic) {
 			elevatorChannels[ii] = make(chan Elevator)
+			elevator := &central.building.elevators[ii]
+			people := &central.building.elevators[ii].people
+			counterForTime := 0
 			for {
-				elevator := &central.building.elevators[ii]
+				counterForTime++
 				tempElevatorPeople := []Person{}
-				if len(elevator.people) != 0 {
-					for _, person := range elevator.people {
+				if len(*people) != 0 {
+					for _, person := range *people {
+						person.timeSpend++
 						if elevator.currentLevel == person.wantingToLevel {
-							fmt.Println("person who wanted to level", person.wantingToLevel, "left the elevator #", elevator.identifier)
+							fmt.Println("person who wanted to level", person.wantingToLevel, "left the elevator #", elevator.identifier, "and waited altogether", person.timeWaited+person.timeSpend)
+							central.building.people = append(central.building.people, person)
 							counter--
 						} else {
-							person.timeSpend = 1
 							tempElevatorPeople = append(tempElevatorPeople, person)
 						}
 					}
-					elevator.people = tempElevatorPeople
+					*people = tempElevatorPeople
 				}
-
-				for len(elevator.people) < elevator.capacity {
+				for len(*people) < elevator.capacity {
 					central.building.muTex.Lock()
 					if len(central.building.levels[elevator.currentLevel].waitingPeople) != 0 {
 						longestWaiter := central.building.levels[elevator.currentLevel].waitingPeople[0]
 						central.building.levels[elevator.currentLevel].waitingPeople = central.building.levels[elevator.currentLevel].waitingPeople[1:]
-						elevator.people = append(elevator.people, longestWaiter)
+						longestWaiter.timeWaited = counterForTime
+						*people = append(*people, longestWaiter)
 						fmt.Println("person who wants to", longestWaiter.wantingToLevel, "went in the elevator #", elevator.identifier)
 						central.building.muTex.Unlock()
 					} else {
 						central.building.muTex.Unlock()
 						break
 					}
-
 				}
-
 				if elevator.currentLevel < elevator.goingToLevel {
-					elevator.currentLevel++
 					elevator.distance++
+					elevator.currentLevel++
 					fmt.Println("Elevator #", elevator.identifier, "is now on", elevator.currentLevel)
 				} else if elevator.currentLevel > elevator.goingToLevel {
 					elevator.currentLevel--
@@ -220,51 +227,63 @@ func LongestWaitingorWanting(elevator *Elevator, central *ControlLogic) {
 
 }
 
-// LongestWanting : Hallo
-func LongestWanting(elevator *Elevator, central *ControlLogic) {
-	longestWantingPerson := Person{}
-	for _, person := range elevator.people {
-		if person.timeSpend > longestWantingPerson.timeSpend {
-			longestWantingPerson = person
-		}
-	}
-	elevator.goingToLevel = longestWantingPerson.wantingToLevel
+// NearestWaiter : Hallo
+func NearestWaiter(elevator *Elevator, central *ControlLogic) {
+	longestWaitingorWantingPerson := Person{}
 	if len(elevator.people) == 0 {
 		for _, level := range central.building.levels {
 			for _, person := range level.waitingPeople {
-				if person.timeWaited > longestWantingPerson.timeWaited {
-					longestWantingPerson = person
+				if person.timeWaited > longestWaitingorWantingPerson.timeWaited {
+					longestWaitingorWantingPerson = person
 				}
 			}
 		}
-		elevator.goingToLevel = longestWantingPerson.waitingOnLevel
+		central.building.elevators[elevator.identifier].goingToLevel = longestWaitingorWantingPerson.waitingOnLevel
+	} else {
+		for _, person := range elevator.people {
+			if person.timeSpend >= longestWaitingorWantingPerson.timeSpend {
+				longestWaitingorWantingPerson = person
+			}
+		}
+		central.building.elevators[elevator.identifier].goingToLevel = longestWaitingorWantingPerson.wantingToLevel
 	}
-	fmt.Println("Elevator #", elevator.identifier, "is now on level", elevator.currentLevel, "and is going to level", elevator.goingToLevel)
+
+	if elevator.currentLevel != central.building.elevators[elevator.identifier].goingToLevel {
+		fmt.Println("Elevator #", elevator.identifier, "is now on level", elevator.currentLevel, "and is going to level", central.building.elevators[elevator.identifier].goingToLevel)
+	}
 }
 
-/* func (central *ControlLogic) toString() {
+func (central *ControlLogic) toString() {
 	fmt.Println()
 	fmt.Println("Name:\t", central.building.name)
-	fmt.Println("Capacity:\t", central.building.capacity)
+	fmt.Println("Capacity:\t", central.capacityPeople)
 	fmt.Println()
-	fmt.Println("Levels:")
+	/* fmt.Println("Levels:")
 	for _, level := range central.building.levels {
 		fmt.Println("\tIdentifier:\t", level.identifier)
 		fmt.Println("\tWaiting people:\t", level.waitingPeople)
 		fmt.Println()
-	}
-	fmt.Println("Elevators:")
+	} */
+	/* fmt.Println("Elevators:")
 	for _, elevator := range central.building.elevators {
 		fmt.Println("\tIdentifier:\t", elevator.identifier)
 		fmt.Println("\tCapacity:\t", elevator.capacity)
 		fmt.Println("\tDistance:\t", elevator.distance)
 		fmt.Println("\tPeople:\t", elevator.people)
 		fmt.Println()
+	} */
+	absoluteWaitTime := 0
+	absoluteSpendTime := 0
+	for _, person := range central.building.people {
+		absoluteWaitTime += person.timeWaited
+		absoluteSpendTime += person.timeSpend
 	}
-	fmt.Println("People:")
+	fmt.Println("Average waiting time:", absoluteWaitTime/central.capacityPeople)
+	fmt.Println("Average spending time:", absoluteSpendTime/central.capacityPeople)
+	/* fmt.Println("People:")
 	for _, human := range central.building.people {
 		fmt.Println("\tTime waited:\t", human.timeWaited)
 		fmt.Println("\tTime spend:\t", human.timeSpend)
 		fmt.Println()
-	}
-} */
+	} */
+}
