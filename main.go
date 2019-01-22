@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// ControlLogic :
+// ControlLogic : The mother of all models
 type ControlLogic struct {
 	capacityPeople   int
 	capacityElevator int
@@ -20,7 +20,7 @@ type ControlLogic struct {
 	building         Building
 }
 
-// Building :
+// Building : Defines a building
 type Building struct {
 	name      string
 	people    []Person
@@ -29,13 +29,13 @@ type Building struct {
 	muTex     sync.Mutex
 }
 
-// Level :
+// Level : Defines a level in a building
 type Level struct {
 	identifier    int
 	waitingPeople []Person
 }
 
-// Elevator :
+// Elevator : Defines a elevator
 type Elevator struct {
 	identifier   int
 	capacity     int
@@ -45,7 +45,7 @@ type Elevator struct {
 	people       []Person
 }
 
-// Person :
+// Person : "Defines" a person
 type Person struct {
 	waitingOnLevel int
 	wantingToLevel int
@@ -78,8 +78,8 @@ func (central *ControlLogic) controlLogic() {
 	personChannel := make(chan Person)
 	elevatorChannels := make([]chan Elevator, central.elevators)
 
-	central.functions = append(central.functions, LongestWaitingorWanting)
-	central.functions = append(central.functions, NearestWaiter)
+	central.functions = append(central.functions, LongestWaitingorLongestWanting)
+	central.functions = append(central.functions, LongestWaitingorNearestWanting)
 	central.building = Building{
 		name:      "FH-AACHEN",
 		people:    []Person{},
@@ -199,25 +199,26 @@ func (central *ControlLogic) elevator(elevatorChannels []chan Elevator) {
 	}
 }
 
-// LongestWaitingorWanting : Hallo
-func LongestWaitingorWanting(elevator *Elevator, central *ControlLogic) {
-	longestWaitingorWantingPerson := Person{}
+// LongestWaitingorLongestWanting : If the elevator is empty, it goes to the level, which has the longest waiting person
+//									If the elevator has people inside, it goes to the level, which is the destination of the longest waiting person in the elevator
+func LongestWaitingorLongestWanting(elevator *Elevator, central *ControlLogic) {
+	longestWaitingorLongestWantingPerson := Person{}
 	if len(elevator.people) == 0 {
 		for _, level := range central.building.levels {
 			for _, person := range level.waitingPeople {
-				if person.timeWaited > longestWaitingorWantingPerson.timeWaited {
-					longestWaitingorWantingPerson = person
+				if person.timeWaited > longestWaitingorLongestWantingPerson.timeWaited {
+					longestWaitingorLongestWantingPerson = person
 				}
 			}
 		}
-		central.building.elevators[elevator.identifier].goingToLevel = longestWaitingorWantingPerson.waitingOnLevel
+		central.building.elevators[elevator.identifier].goingToLevel = longestWaitingorLongestWantingPerson.waitingOnLevel
 	} else {
 		for _, person := range elevator.people {
-			if person.timeSpend >= longestWaitingorWantingPerson.timeSpend {
-				longestWaitingorWantingPerson = person
+			if person.timeSpend >= longestWaitingorLongestWantingPerson.timeSpend {
+				longestWaitingorLongestWantingPerson = person
 			}
 		}
-		central.building.elevators[elevator.identifier].goingToLevel = longestWaitingorWantingPerson.wantingToLevel
+		central.building.elevators[elevator.identifier].goingToLevel = longestWaitingorLongestWantingPerson.wantingToLevel
 	}
 
 	if elevator.currentLevel != central.building.elevators[elevator.identifier].goingToLevel {
@@ -226,8 +227,9 @@ func LongestWaitingorWanting(elevator *Elevator, central *ControlLogic) {
 
 }
 
-// NearestWaiter : Hallo
-func NearestWaiter(elevator *Elevator, central *ControlLogic) {
+// LongestWaitingorNearestWanting : If the elevator is empty, it goes to the level, which has the longest waiting person
+//									If the elevator has people inside, it goes to the level, which is the nearest destination of the waiting people in the elevator
+func LongestWaitingorNearestWanting(elevator *Elevator, central *ControlLogic) {
 	longestWaitingorNearestWantingPerson := Person{}
 	if len(elevator.people) == 0 {
 		for _, level := range central.building.levels {
